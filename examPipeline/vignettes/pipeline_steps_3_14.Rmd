@@ -1,0 +1,95 @@
+---
+title: "Exam pipeline: Steps 3–14 (scRNA-seq + scATAC-seq, RP-focused)"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Exam pipeline: Steps 3–14 (scRNA-seq + scATAC-seq, RP-focused)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+## Overview
+
+This package provides functions implementing an exam pipeline (Steps 3–14) for 10x Genomics
+single-cell data, focusing on ribosomal-protein (RP) genes and RP loci.
+
+**Inputs (example layout used in the project):**
+- `data_dir`: `/workspace/data`
+- `refs_dir`: `/workspace/refs`
+- `res_dir`: `/workspace/results`
+
+**Main outputs (example):**
+- Step 5: `results/step5_mtx_out_scRNA_only/` (MTX bundle)
+- Step 7: `results/step7_mtx_rp_only/` (RP-filtered MTX)
+- Step 8–9: `results/step8_plots/`, `results/step9_ARI_sweep_RP_only/`
+- Step 11: `results/step11_atac_objects_rp_only/` (per-PDX ATAC objects)
+- Step 12: `results/step12_ATAC_RP_combined.rds`
+- Step 13–14: `results/step13_plots/`, `results/step14_param_sweep_atac/`
+
+## Step-by-step description
+
+### Step 3 — Select scRNA-seq 10x HDF5 by content
+Scans `data_dir` for `.h5` files and keeps only those containing RNA/Gene Expression features.
+
+Function: `step3_select_scrna_h5()`
+
+### Step 4 — Reproducible subsampling to 500 cells per dataset
+Loads each selected scRNA dataset and samples `sample_n` cells using a fixed `seed`.
+
+Function: `step4_subsample_scrna_to_seurat()`
+
+### Step 5 — Merge and export MTX bundle
+Merges the subsampled Seurat objects and exports a 10x-like MTX bundle:
+`matrix.mtx`, `barcodes.tsv`, `features.tsv`.
+
+Function: `step5_merge_and_export_mtx()`
+
+### Step 6 — Extract RP genes from Ensembl GTF (release 115)
+Downloads/uses the Ensembl GTF and produces RP gene IDs and an RP-only GTF.
+
+Function: `step6_extract_rp_from_gtf()`
+
+### Step 7 — Filter merged MTX to RP genes
+Filters the merged expression matrix to RP features only.
+
+Function: `step7_filter_mtx_to_rp()`
+
+### Step 8 — Seurat analysis and plots (RP-only)
+Runs standard Seurat workflow on the RP-only matrix (PCA/UMAP) and writes plots.
+
+Function: `step8_seurat_umap_by_pdx()`
+
+### Step 9 — ARI sweep on scRNA RP-only
+Performs clustering parameter sweeps and computes ARI.
+
+Function: `step9_ari_sweep_rp()`
+
+### Step 10 — Build RP loci as GRanges from RP-only GTF
+Builds genomic loci for RP genes (GRanges) to be used for ATAC counting.
+
+Function: `step10_build_rp_loci_granges()`
+
+### Step 11 — Build ATAC objects per PDX restricted to RP loci
+Creates one Signac/Seurat ATAC object per PDX using fragments files, restricted to RP loci
+and to the same sampled cells retained in Step 5.
+
+Function: `step11_build_atac_per_pdx_rp()`
+
+### Step 12 — Merge ATAC objects
+Merges the per-PDX ATAC objects into one combined object and saves it to `.rds`.
+
+Function: `step12_merge_atac_objects()`
+
+### Step 13 — ATAC LSI/UMAP and plots
+Runs ATAC dimensionality reduction (e.g., TF-IDF/LSI/UMAP) and writes plots.
+
+Function: `step13_atac_umap_by_pdx()`
+
+### Step 14 — ARI sweep on ATAC
+Performs clustering parameter sweeps on ATAC and computes ARI.
+
+Function: `step14_ari_sweep_atac()`
+
+## Example run script
+
+A simple driver script can call the functions sequentially, writing outputs to the folders above.
+See the project run script used in the workspace for the exact paths and parameters.

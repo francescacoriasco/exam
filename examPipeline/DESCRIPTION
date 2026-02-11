@@ -1,0 +1,38 @@
+Package: examPipeline
+Type: Package
+Title: Exam Pipeline for scRNA-seq and scATAC-seq Focused on Ribosomal-Protein (RP) Features
+Version: 0.1.0
+Authors@R:
+    person(given = "francesca", email = "francesca@gmail.com", role = c("aut", "cre"))
+Description: A set of general-purpose functions implementing an exam pipeline (Steps 3–14)
+    for single-cell 10x Genomics data. The workflow includes: (Step 3) selecting scRNA-seq
+    10x HDF5 files by content; (Step 4) reproducible subsampling of cells per dataset;
+    (Step 5) merging scRNA-seq datasets and exporting a 10x-like sparse MTX bundle;
+    (Step 6) extracting ribosomal-protein (RP) gene identifiers from an Ensembl GTF and
+    writing an RP-only GTF; (Step 7) filtering the merged expression matrix to RP features;
+    (Steps 8–9) Seurat-based dimensionality reduction/clustering and parameter sweeps scored
+    by ARI; (Step 10) building RP loci as GRanges from the RP-only GTF; (Steps 11–12) creating
+    and merging Signac/Seurat ATAC objects restricted to RP loci and to the same sampled cells;
+    and (Steps 13–14) ATAC LSI/UMAP/clustering plus ARI-based parameter sweeps.
+License: GPL-3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports:
+    BiocParallel,
+    DropletUtils,
+    Matrix,
+    Seurat,
+    SeuratObject,
+    SummarizedExperiment,
+    GenomicRanges,
+    GenomeInfoDb,
+    rtracklayer,
+    Rsamtools,
+    GenomicAlignments,
+    Signac,
+    mclust
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr

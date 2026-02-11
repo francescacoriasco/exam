@@ -1,0 +1,37 @@
+# =========================
+# DATA (do not upload)
+# =========================
+data/
+results/
+refs/
+workspace/data/
+workspace/results/
+workspace/refs/
+Report.html
+# =========================
+# Jupyter notebooks
+# =========================
+*.ipynb
+.ipynb_checkpoints/
+
+# =========================
+# R artifacts
+# =========================
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+*.tar.gz
+*.Rcheck/
+
+# =========================
+# System files
+# =========================
+.DS_Store
+
+
+# =========================
+# Trash
+# =========================
+.Trash/
+.Trash-0/

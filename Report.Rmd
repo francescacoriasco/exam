@@ -1,0 +1,452 @@
+
+---
+title: "ExamPipeline — Report (Steps 3–14)"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  error   = TRUE
+)
+
+# -----------------------------
+# Paths
+# -----------------------------
+pkg_root <- "/workspace/myproj"
+
+data_dir <- "/workspace/data"
+refs_dir <- "/workspace/refs"
+res_dir  <- "/workspace/results"
+
+step5_dir  <- file.path(res_dir, "step5_mtx_out_scRNA_only")
+step7_dir  <- file.path(res_dir, "step7_mtx_rp_only")
+step8_dir  <- file.path(res_dir, "step8_plots")
+step9_dir  <- file.path(res_dir, "step9_ARI_sweep_RP_only")
+step11_dir <- file.path(res_dir, "step11_atac_objects_rp_only")
+step13_dir <- file.path(res_dir, "step13_plots")
+step14_dir <- file.path(res_dir, "step14_param_sweep_atac")
+
+dir.create(refs_dir,   showWarnings = FALSE, recursive = TRUE)
+dir.create(res_dir,    showWarnings = FALSE, recursive = TRUE)
+dir.create(step5_dir,  showWarnings = FALSE, recursive = TRUE)
+dir.create(step7_dir,  showWarnings = FALSE, recursive = TRUE)
+dir.create(step8_dir,  showWarnings = FALSE, recursive = TRUE)
+dir.create(step9_dir,  showWarnings = FALSE, recursive = TRUE)
+dir.create(step11_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(step13_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(step14_dir, showWarnings = FALSE, recursive = TRUE)
+
+# -----------------------------
+# Reference files
+# -----------------------------
+rp_ids_rds  <- file.path(refs_dir, "rp_gene_ids_release115.rds")
+gtf_rp_gz   <- file.path(refs_dir, "Homo_sapiens.GRCh38.115.RP_only.gtf.gz")
+rp_loci_rds <- file.path(refs_dir, "rp_gene_loci_GRanges_release115.rds")
+step12_rds  <- file.path(res_dir, "step12_ATAC_RP_combined.rds")
+
+# -----------------------------
+# Install/load local package
+# -----------------------------
+if (!requireNamespace("examPipeline", quietly = TRUE)) {
+  install.packages(pkg_root, repos = NULL, type = "source")
+}
+library(examPipeline)
+
+# -----------------------------
+# Helpers
+# -----------------------------
+kable_paths <- function(x, col = "path") {
+  if (is.null(x) || length(x) == 0) return(invisible(NULL))
+  df <- data.frame(as.character(x), stringsAsFactors = FALSE)
+  names(df) <- col
+  knitr::kable(df)
+}
+ls_dir <- function(d) {
+  if (!dir.exists(d)) return(character())
+  sort(list.files(d, full.names = TRUE))
+}
+```
+# Introduction
+
+This report describes a reproducible analysis pipeline for 10x Genomics single-cell data from **GSE307240**, integrating **scRNA-seq** and **scATAC-seq** across multiple **patient-derived xenograft (PDX)** samples. The workflow is implemented as an R package (`examPipeline`) and executed as an ordered set of steps (Steps 3–14), producing standardized intermediate files and final results suitable for downstream interpretation.
+
+A central focus of the analysis is the **ribosomal-protein (RP)** gene program. The pipeline (i) extracts RP gene identifiers from an Ensembl GTF annotation, (ii) restricts the scRNA-seq expression matrix to RP features, and (iii) evaluates whether RP-only signal is sufficient to separate PDX samples in low-dimensional embeddings and clustering.
+
+In parallel, the scATAC-seq component quantifies chromatin accessibility over genomic loci associated with RP genes. By building RP loci as `GRanges` objects and restricting fragment counting to these regions, the ATAC analysis is aligned with the RP-focused RNA analysis. Final outputs include UMAP-based visualizations and clustering for both modalities, as well as parameter sweeps evaluated using the **Adjusted Rand Index (ARI)** to compare clustering configurations.
+
+The analysis was executed inside a Docker container to ensure full computational reproducibility.
+
+# Data description
+
+All files used in this project were downloaded from GEO dataset GSE307240.
+
+* scRNA-seq: 10x HDF5 (`.h5`) files
+* scATAC-seq: fragment files (`*_fragments.tsv.gz` or `*.bgz`)
+
+Folders:
+
+* `data_dir = /workspace/data` (raw input files)
+* `refs_dir = /workspace/refs` (reference files)
+* `res_dir = /workspace/results` (outputs)
+
+The pipeline standardizes the analysis by subsampling **500 cells per dataset** and reusing the same barcodes for ATAC object construction.
+
+---
+
+# Results
+
+## Step 3 — Load `.h5` and select scRNA-seq count matrices
+
+```{r step3_call, results='hide'}
+scrna_h5 <- step3_select_scrna_h5(
+  data_dir = data_dir,
+  recursive = TRUE,
+  verbose = FALSE
+)
+```
+
+**Step 3 output:** scRNA-seq `.h5` files retained = `r length(scrna_h5)`.
+
+```{r step3_out, echo=FALSE, results='asis'}
+kable_paths(scrna_h5, col = "h5_path")
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation / what this step checks (per assignment).**
+The raw folder can include files that are not purely scRNA. Step 3 keeps only `.h5` files that contain **Gene Expression/RNA** features, ensuring downstream RNA analysis is applied to the correct modality.
+
+**Result comment.**
+The table lists the `.h5` files used for the RNA branch. This should match the expected set of PDX experiments.
+
+---
+
+## Step 4 — Subsample 500 cells from each dataset
+
+```{r step4_call, results='hide'}
+objs <- step4_subsample_scrna_to_seurat(
+  scrna_files = scrna_h5,
+  sample_n = 500,
+  seed = 1,
+  verbose = FALSE
+)
+```
+
+**Step 4 output:** Seurat objects created = `r length(objs)`.
+
+```{r step4_out, echo=FALSE, results='asis'}
+dims_tbl <- data.frame(
+  sample = names(objs),
+  genes  = vapply(objs, function(o) as.integer(nrow(o)), integer(1)),
+  cells  = vapply(objs, function(o) as.integer(ncol(o)), integer(1)),
+  stringsAsFactors = FALSE
+)
+knitr::kable(dims_tbl)
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation (per assignment).**
+Cell numbers can differ across experiments; subsampling to 500 cells per dataset yields comparable representation and reduces runtime/memory.
+
+**Result comment.**
+Each dataset should show ~500 cells (or fewer only if the source had fewer). This table documents the exact dimensions used.
+
+---
+
+## Step 5 — Merge subsampled cells and export sparse MTX
+
+```{r step5_call, results='hide'}
+s5 <- step5_merge_and_export_mtx(
+  objs = objs,
+  out_dir = step5_dir,
+  prefix = NULL,
+  overwrite = TRUE,
+  verbose = FALSE
+)
+```
+
+**Step 5 output:** merged expression matrix = `r s5$dims["genes"]` genes × `r s5$dims["cells"]` cells.
+
+```{r step5_out, echo=FALSE, results='asis'}
+out_df <- data.frame(
+  name = names(s5$out_files),
+  file = unlist(s5$out_files, use.names = FALSE),
+  stringsAsFactors = FALSE
+)
+knitr::kable(out_df)
+cat("\n\n&nbsp;\n\n")
+
+kable_paths(unlist(s5$out_files, use.names = FALSE), col = "file")
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation (per assignment).**
+Merging creates a single expression dataset (500 cells × experiments), and exporting to MTX makes the intermediate portable and auditable.
+
+**Result comment.**
+The merged cell count should be close to 5 × 500 = 2500. The MTX bundle is the input for Step 7.
+
+---
+
+## Step 6 — Download Ensembl GTF (release 115) and retain only RP entries
+
+```{r step6_call, results='hide'}
+s6 <- step6_extract_rp_from_gtf(
+  refs_dir = refs_dir,
+  release = 115,
+  verbose = FALSE
+)
+```
+
+**Step 6 output:** RP gene_ids = `r length(s6$rp_gene_ids)`.
+
+```{r step6_out, echo=FALSE, results='asis'}
+knitr::kable(data.frame(
+  item = c("Full GTF (release 115)", "RP gene_id list (RDS)", "RP-only GTF"),
+  path = c(s6$gtf_gz, s6$rp_ids_rds, s6$gtf_rp_gz),
+  stringsAsFactors = FALSE
+))
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation (per assignment).**
+This step defines the RP feature set from Ensembl release 115 by retaining entries whose `gene_name` begins with “RP”.
+
+**Result comment.**
+The three outputs (full GTF, RP id list, RP-only GTF) are saved under `refs_dir` and reused by the RNA and ATAC branches.
+
+---
+
+## Step 7 — Filter combined scRNA matrix to RP-only features
+
+```{r step7_call, results='hide'}
+s7 <- step7_filter_mtx_to_rp(
+  in_dir = step5_dir,
+  rp_ids_rds = rp_ids_rds,
+  out_dir = step7_dir,
+  verbose = FALSE
+)
+```
+
+**Step 7 output:** RP-only matrix = `r s7$dims["features"]` features × `r s7$dims["cells"]` cells.
+RP features retained: `r s7$kept_features`.
+
+```{r step7_out, echo=FALSE, results='asis'}
+kable_paths(ls_dir(step7_dir), col = "file")
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation (per assignment).**
+Restricting the expression matrix to RP genes tests whether ribosomal programs alone can separate PDX samples.
+
+**Result comment.**
+The RP-only MTX bundle is the input for Seurat clustering in Step 8.
+
+---
+
+## Step 8 — Run Seurat clustering and visualize cells colored by PDX
+
+```{r step8_call, results='hide'}
+s8 <- step8_seurat_umap_by_pdx(
+  in_dir = step7_dir,
+  out_dir = step8_dir,
+  save_plots = TRUE,
+  verbose = FALSE
+)
+```
+
+**Step 8 output:** Seurat object = `r nrow(s8$obj)` features × `r ncol(s8$obj)` cells.
+
+```{r step8_out, echo=FALSE, results='asis'}
+png8 <- file.path(step8_dir, "umap_by_pdx.png")
+if (file.exists(png8)) knitr::include_graphics(png8) else knitr::kable(data.frame(missing_plot = png8))
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation (per assignment).**
+Clustering/UMAP on RP-only RNA evaluates whether PDX identity aligns with ribosomal expression patterns.
+
+**Result comment.**
+If PDX samples separate, points of the same PDX will tend to occupy coherent regions of the embedding; overlap suggests RP-only signal is not sufficient alone.
+
+---
+
+## Step 9 — Sweep clustering settings and quantify PDX separation (ARI)
+
+```{r step9_call, results='hide'}
+s9 <- step9_ari_sweep_rp(
+  obj = s8$obj,
+  out_dir = step9_dir,
+  verbose = FALSE
+)
+```
+
+**Step 9 output:** best configuration (by ARI) and a preview of the sweep results.
+
+```{r step9_out, echo=FALSE, results='asis'}
+knitr::kable(s9$best)
+cat("\n\n&nbsp;\n\n")
+knitr::kable(utils::head(s9$results, 10))
+cat("\n\n&nbsp;\n\n")
+kable_paths(s9$out_files, col = "file")
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation (per assignment).**
+Sweeping parameters (e.g., resolution/PCs/neighbors) tests robustness of PDX separation under RP-only signal.
+
+**Result comment.**
+Higher ARI indicates stronger agreement between clustering and PDX labels for that configuration; the saved tables allow full inspection.
+
+---
+
+## Step 10 — Build a GenomicRanges object of RP loci from RP-only GTF
+
+```{r step10_call, results='hide'}
+s10 <- step10_build_rp_loci_granges(
+  gtf_rp_gz = gtf_rp_gz,
+  out_rds = rp_loci_rds,
+  verbose = FALSE
+)
+```
+
+**Step 10 output:** RP loci (gene-level) = `r length(s10$gr_gene)`.
+
+```{r step10_out, echo=FALSE, results='asis'}
+kable_paths(s10$out_rds, col = "rp_loci_rds")
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation (per assignment).**
+This creates genomic intervals for RP loci used to restrict ATAC fragments to RP-associated regions.
+
+**Result comment.**
+The saved `GRanges` is reused in Step 11 to count only fragments overlapping RP loci.
+
+---
+
+## Step 11 — Create one ATAC object per PDX restricted to RP loci and same 500 cells
+
+```{r step11_call, results='hide'}
+s11 <- step11_build_atac_per_pdx_rp(
+  data_dir     = data_dir,
+  barcodes_tsv = file.path(step5_dir, "barcodes.tsv"),
+  rp_loci_rds  = rp_loci_rds,
+  out_dir      = step11_dir,
+  verbose      = FALSE
+)
+```
+
+**Step 11 output:** ATAC objects created = `r s11$created`.
+
+```{r step11_out, echo=FALSE, results='asis'}
+kable_paths(s11$paths, col = "atac_rds")
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation (per assignment).**
+Per-PDX ATAC objects are restricted to fragments overlapping RP loci and the same barcodes retained in the RNA branch.
+
+**Result comment.**
+Successful creation indicates: (i) fragments were found and indexed, (ii) RP-locus overlaps were computed, and (iii) barcodes were aligned to the RNA subsample.
+
+---
+
+## Step 12 — Merge the 5 ATAC objects into a combined dataset
+
+```{r step12_call, results='hide'}
+s12 <- step12_merge_atac_objects(
+  in_dir  = step11_dir,
+  out_rds = step12_rds,
+  verbose = FALSE
+)
+```
+
+**Step 12 output:** combined ATAC = `r nrow(s12$atac_combined)` features × `r ncol(s12$atac_combined)` cells.
+
+```{r step12_out, echo=FALSE, results='asis'}
+kable_paths(s12$out_rds, col = "atac_combined_rds")
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation (per assignment).**
+Merging yields a single ATAC dataset aligned to RP loci, enabling clustering/UMAP across all PDX samples.
+
+**Result comment.**
+The merged cell count should be close to 2500 (5 × 500), consistent with the RNA subsampling.
+
+---
+
+## Step 13 — Perform ATAC clustering and plot cells colored by PDX
+
+```{r step13_call, results='hide'}
+s13 <- step13_atac_umap_by_pdx(
+  atac = step12_rds,
+  out_dir = step13_dir,
+  save_plots = TRUE,
+  verbose = FALSE
+)
+```
+
+**Step 13 output:** ATAC object = `r nrow(s13$atac)` features × `r ncol(s13$atac)` cells.
+
+```{r step13_out, echo=FALSE, results='asis'}
+png13 <- file.path(step13_dir, "umap_by_pdx.png")
+if (file.exists(png13)) knitr::include_graphics(png13) else knitr::kable(data.frame(missing_plot = png13))
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation (per assignment).**
+ATAC clustering/UMAP tests whether RP-locus accessibility alone separates the PDX samples.
+
+**Result comment.**
+Separation by PDX would suggest that RP-locus chromatin state differs systematically across the patient-derived samples.
+
+---
+
+## Step 14 — Sweep ATAC clustering parameters to assess PDX separation (ARI)
+
+```{r step14_call, results='hide'}
+s14 <- step14_ari_sweep_atac(
+  atac = s13$atac,
+  out_dir = step14_dir,
+  verbose = FALSE
+)
+```
+
+**Step 14 output:** best configuration (by ARI) and a preview of the sweep results.
+
+```{r step14_out, echo=FALSE, results='asis'}
+knitr::kable(s14$best)
+cat("\n\n&nbsp;\n\n")
+knitr::kable(utils::head(s14$results, 10))
+cat("\n\n&nbsp;\n\n")
+kable_paths(s14$out_files, col = "file")
+cat("\n\n&nbsp;\n\n")
+```
+
+**Motivation (per assignment).**
+Parameter sweeps quantify robustness of PDX separation using RP-locus accessibility, summarized by ARI across configurations.
+
+**Result comment.**
+As in the RNA branch, ARI summarizes agreement between clustering and known PDX labels across parameter choices.
+
+
+---
+
+# Discussion
+
+Some technical issues arose during development and execution of the pipeline; they were resolved to ensure that the workflow runs reproducibly end-to-end.
+
+**1. Memory pressure.** Steps involving loading 10x matrices, merging objects, and building feature matrices can be memory intensive. The pipeline mitigates this by subsampling a fixed number of cells per dataset, restricting analyses to RP features/loci, and removing large intermediate objects between steps.
+
+**2. JoinLayers availability.** During development, JoinLayers produced errors when it was not exported/available under the expected namespace. The fix was to avoid hard dependencies on JoinLayers being exported and to handle Seurat v5 layer access in a way that remains compatible with the installed Seurat version.
+
+**3. ATAC fragment requirements (bgzip + tabix).** Signac requires bgzip-compressed fragment files and a valid tabix index. When fragments were not in the correct format, they were converted to `.bgz` and indexed before building ChromatinAssays.
+
