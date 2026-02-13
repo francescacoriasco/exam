@@ -8,7 +8,7 @@ This project uses Docker to provide a fully reproducible environment for the exa
 Input datasets are not included in this repository.  
 To reproduce the analysis, place the required input files under `/workspace/data`, export the data and run the report.
 
-### Why Docker?
+## Why Docker?
 
 Docker is recommended here because it:
 
@@ -18,7 +18,7 @@ Docker is recommended here because it:
 - **Keeps the host clean**: the container isolates the project runtime from the local R/Python installations.
 - **Supports the full workflow**: interactive development in **JupyterLab** and report generation with **R Markdown**.
 
-### What the Dockerfile provides
+## What the Dockerfile provides
 
 The Docker image is built from `rocker/r2u:24.04` (Ubuntu 24.04 + R with r2u), and installs:
 
@@ -31,7 +31,6 @@ The Docker image is built from `rocker/r2u:24.04` (Ubuntu 24.04 + R with r2u), a
 To reduce memory spikes from BLAS/OpenMP parallelism, the image sets:
 `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, etc.
 
-### Build the image
 
 
 ## Reproducibility with Docker

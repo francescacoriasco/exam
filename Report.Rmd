@@ -73,7 +73,7 @@ ls_dir <- function(d) {
   sort(list.files(d, full.names = TRUE))
 }
 ```
-# Introduction
+## Introduction
 
 This report describes a reproducible analysis pipeline for 10x Genomics single-cell data from **GSE307240**, integrating **scRNA-seq** and **scATAC-seq** across multiple **patient-derived xenograft (PDX)** samples. The workflow is implemented as an R package (`examPipeline`) and executed as an ordered set of steps (Steps 3–14), producing standardized intermediate files and final results suitable for downstream interpretation.
 
@@ -81,22 +81,23 @@ A central focus of the analysis is the **ribosomal-protein (RP)** gene program. 
 
 In parallel, the scATAC-seq component quantifies chromatin accessibility over genomic loci associated with RP genes. By building RP loci as `GRanges` objects and restricting fragment counting to these regions, the ATAC analysis is aligned with the RP-focused RNA analysis. Final outputs include UMAP-based visualizations and clustering for both modalities, as well as parameter sweeps evaluated using the **Adjusted Rand Index (ARI)** to compare clustering configurations.
 
-The analysis was executed inside a Docker container to ensure full computational reproducibility.
+## Data description
 
-# Data description
+**GSE307240** provides 10x Genomics single-cell data generated from multiple PDX samples, with two complementary modalities:
 
-All files used in this project were downloaded from GEO dataset GSE307240.
+* **scRNA-seq (expression)**: 10x HDF5 (`.h5`) files containing sparse gene × cell count matrices (and potentially multiple feature types). These files quantify transcript abundance per cell.
+* **scATAC-seq (chromatin accessibility)**: fragment files (`*_fragments.tsv.gz` or `*.bgz`) containing genomic coordinates of Tn5 integration events linked to cell barcodes. These files quantify accessibility over genomic regions (here restricted to RP loci).
 
-* scRNA-seq: 10x HDF5 (`.h5`) files
-* scATAC-seq: fragment files (`*_fragments.tsv.gz` or `*.bgz`)
+Inputs are stored locally using the following layout:
 
-Folders:
+* `data_dir = /workspace/data`
+  Raw input files (scRNA `.h5` and ATAC fragments) for all PDX samples.
+* `refs_dir = /workspace/refs`
+  Reference/annotation files produced or used by the workflow, including RP gene identifiers, RP-only GTF, and RP loci (`GRanges`).
+* `res_dir = /workspace/results`
+  Step-specific outputs (exported MTX bundles, plots, ARI sweep summaries, and merged serialized objects).
 
-* `data_dir = /workspace/data` (raw input files)
-* `refs_dir = /workspace/refs` (reference files)
-* `res_dir = /workspace/results` (outputs)
-
-The pipeline standardizes the analysis by subsampling **500 cells per dataset** and reusing the same barcodes for ATAC object construction.
+Because the number of cells differs across runs, the pipeline standardizes the analysis by **reproducibly subsampling 500 cells per scRNA dataset** (fixed random seed and deterministic ordering). The selected cell barcodes are then **propagated to the ATAC workflow**, ensuring that each per-PDX ATAC object is built using the same subset of cells retained from scRNA-seq.
 
 ---
 
@@ -444,9 +445,10 @@ As in the RNA branch, ARI summarizes agreement between clustering and known PDX 
 
 Some technical issues arose during development and execution of the pipeline; they were resolved to ensure that the workflow runs reproducibly end-to-end.
 
-**1. Memory pressure.** Steps involving loading 10x matrices, merging objects, and building feature matrices can be memory intensive. The pipeline mitigates this by subsampling a fixed number of cells per dataset, restricting analyses to RP features/loci, and removing large intermediate objects between steps.
+**1. Memory pressure.** A major technical issue encountered during the analysis concerned RAM usage when loading data into Seurat objects. Directly importing full 10x datasets and constructing Seurat objects for multiple PDX samples resulted in memory saturation, particularly during merging steps and downstream dimensionality reduction, leading to session instability and occasional crashes. The problem was mainly attributable to the large size of the raw count matrices, the in-memory duplication of objects during Seurat preprocessing steps such as normalization, scaling, and PCA, and temporary memory spikes generated during object merging. To address this limitation, the workflow was redesigned to reduce memory demand at multiple stages. Instead of loading all available cells, a fixed number of cells per dataset (e.g., 500 per PDX) was selected prior to full object construction, substantially decreasing the overall memory footprint while preserving comparability across samples. In addition, downstream analyses were restricted to ribosomal-protein (RP) genes, which markedly reduced matrix dimensionality and computational burden. Count matrices were maintained in sparse format whenever possible to prevent unnecessary dense matrix expansion. Furthermore, objects were processed independently per PDX and merged only after dimensionality reduction when feasible, thereby minimizing peak RAM consumption. Finally, BLAS and OMP threads were limited within the Docker environment to avoid parallel memory spikes. After implementing these adjustments, Seurat objects could be loaded and processed reliably without exceeding available RAM, ensuring stable execution of the pipeline while maintaining analytical consistency.
 
-**2. JoinLayers availability.** During development, JoinLayers produced errors when it was not exported/available under the expected namespace. The fix was to avoid hard dependencies on JoinLayers being exported and to handle Seurat v5 layer access in a way that remains compatible with the installed Seurat version.
+**2. JoinLayers availability.** During development, compatibility issues were encountered with the JoinLayers function in Seurat v5. In some environments, JoinLayers was not exported or not available under the expected namespace, leading to execution errors when attempting to combine assay layers. This created instability in workflows relying on explicit layer manipulation. To resolve this issue, hard dependencies on JoinLayers were removed and layer access was implemented using version-robust strategies compatible with the installed Seurat release. By adapting the code to handle assay layers more flexibly, the workflow remained functional across different Seurat versions without requiring strict package version pinning.
 
-**3. ATAC fragment requirements (bgzip + tabix).** Signac requires bgzip-compressed fragment files and a valid tabix index. When fragments were not in the correct format, they were converted to `.bgz` and indexed before building ChromatinAssays.
+**3. ATAC fragment requirements (bgzip + tabix).** Another technical constraint emerged in the ATAC branch concerning fragment file requirements in Signac. Chromatin assays in Signac require fragment files to be bgzip-compressed and accompanied by a valid tabix index. When fragment files were not provided in the correct .bgz format or lacked proper indexing, object construction failed. This was resolved by converting fragment files to bgzip-compressed format and generating the corresponding tabix index prior to building ChromatinAssay objects. Ensuring proper compression and indexing allowed fragments to be queried efficiently and enabled successful construction of ATAC objects.
 
+Overall, addressing these compatibility and file-format requirements improved the robustness and portability of the pipeline across computational environments and package versions.
