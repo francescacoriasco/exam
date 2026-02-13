@@ -73,7 +73,7 @@ ls_dir <- function(d) {
   sort(list.files(d, full.names = TRUE))
 }
 ```
-## Introduction
+# Introduction
 
 This report describes a reproducible analysis pipeline for 10x Genomics single-cell data from **GSE307240**, integrating **scRNA-seq** and **scATAC-seq** across multiple **patient-derived xenograft (PDX)** samples. The workflow is implemented as an R package (`examPipeline`) and executed as an ordered set of steps (Steps 3–14), producing standardized intermediate files and final results suitable for downstream interpretation.
 
@@ -81,7 +81,7 @@ A central focus of the analysis is the **ribosomal-protein (RP)** gene program. 
 
 In parallel, the scATAC-seq component quantifies chromatin accessibility over genomic loci associated with RP genes. By building RP loci as `GRanges` objects and restricting fragment counting to these regions, the ATAC analysis is aligned with the RP-focused RNA analysis. Final outputs include UMAP-based visualizations and clustering for both modalities, as well as parameter sweeps evaluated using the **Adjusted Rand Index (ARI)** to compare clustering configurations.
 
-## Data description
+# Data description
 
 **GSE307240** provides 10x Genomics single-cell data generated from multiple PDX samples, with two complementary modalities:
 
