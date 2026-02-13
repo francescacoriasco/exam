@@ -185,4 +185,4 @@ This generates an HTML report (by default in the same directory as `Report.Rmd` 
   https://github.com/francescacoriasco/exam
 
 - Docker Hub repository:  
-  https://hub.docker.com/repositories/francescacoriasco
+ https://hub.docker.com/repository/docker/francescacoriasco/exam/general
