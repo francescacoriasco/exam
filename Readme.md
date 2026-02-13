@@ -123,14 +123,6 @@ Open the package documentation index:
 help(package = "examPipeline")
 ```
 
-### 3) Build and view the vignette
-
-Build the vignettes (optional, only if you want to rebuild them):
-
-```bash
-R -q -e "devtools::build_vignettes('/workspace/examPipeline')"
-```
-
 After installation, the vignette HTML can be retrieved from the package `doc/` folder and displayed (e.g., in Jupyter):
 
 ```r
