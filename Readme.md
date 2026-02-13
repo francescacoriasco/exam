@@ -85,21 +85,33 @@ The package source is located in:
 
 * `/workspace/examPipeline` (contains `DESCRIPTION`, `NAMESPACE`, `R/`, `man/`, `vignettes/`)
 
-Install it with:
+#### Option A — Install functions only (fast install)
 
 ```bash
 R -q -e "install.packages('/workspace/examPipeline', repos = NULL, type = 'source')"
 ```
 
-### 2) Access function documentation (help pages)
+#### Option B — Install including vignette compilation (recommended)
 
-Load the package:
+This compiles the `.Rmd` file in `vignettes/` and makes it available via `browseVignettes()`.
+
+```bash
+R -q -e "devtools::install('/workspace/examPipeline', upgrade = 'never', build_vignettes = TRUE)"
+```
+
+---
+
+### 2) Load the package
 
 ```r
 library(examPipeline)
 ```
 
-Open the help page for a function:
+---
+
+### 3) Access function documentation (help pages)
+
+Open the help page for a specific function:
 
 ```r
 ?step3_select_scrna_h5
@@ -108,7 +120,7 @@ Open the help page for a function:
 or:
 
 ```r
-help('step3_select_scrna_h5')
+help("step3_select_scrna_h5")
 ```
 
 List all exported functions:
@@ -123,7 +135,9 @@ Open the package documentation index:
 help(package = "examPipeline")
 ```
 
-After installation, the vignette HTML can be retrieved from the package `doc/` folder and displayed (e.g., in Jupyter):
+---
+
+### 4) Access the vignetteb - If accessing the compiled HTML manually (e.g., in Jupyter)
 
 ```r
 library(examPipeline)
@@ -134,6 +148,9 @@ IRdisplay::display_html(
   paste(readLines(html, warn = FALSE), collapse = "\n")
 )
 ```
+
+Note: the vignette HTML is available only if the package was installed with `build_vignettes = TRUE` or if it was previously built and included in `inst/doc`.
+
 
 ### 4) Render the full analysis report (R Markdown)
 
